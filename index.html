@@ -193,6 +193,9 @@ tr.row-scrap .btn-line{color:#F5F5F7 !important;border-color:rgba(255,255,255,.3
 tr.row-borrow .cellsub{color:#8A6D00}
 tr.row-out .cellsub{color:#3A5A8C}
 .cellsub{font-size:12px;color:var(--muted);display:block;margin-top:2px}
+.flow-note{line-height:2;font-size:13px;color:var(--muted)}
+.flow-note b{color:var(--text);font-weight:600}
+.flow-note .n{color:var(--primary);font-weight:700;margin-right:4px}
 .acts{display:flex;flex-wrap:wrap;gap:6px}
 .lock-box{display:flex;align-items:center;flex-wrap:wrap;gap:8px;background:#FFFBEB;border:1px dashed #FFD60A;border-radius:10px;padding:9px 12px}
 .lock-tip{font-size:12px;color:#8A6D00;line-height:1.45}
@@ -942,7 +945,7 @@ function openDeleteDeviceModal(id){
     : '<div class="muted" style="margin-bottom:12px">该设备当前无未闭环业务，可直接删除。</div>';
   var forceBlock = bl.blocked
     ? '<label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.5;margin-top:10px">'
-      + '<input type="checkbox" id="delForce"> 我确认强制删除（将清除该设备的所有关联流水 / 工单 / 借用记录）</label>'
+      + '<input type="checkbox" id="delForce"> 我确认强制删除所有出入库流水 / 维修工单 / 借用记录</label>'
     : '';
   openModal({
     title:'删除设备', narrow:true, danger:true, okText:'确认删除',
@@ -1346,7 +1349,7 @@ function renderFlow(){
   var rows = list.length ? list.map(function(f){
     var isIn = f.type==='in';
     var d = dm[f.devId]||{};
-    var devTxt = (f.devCode ? (f.devCode+' '+f.devName) : devLabel(f.devId));
+    var qty = +f.qty||0;
     var retTag = '';
     if(!isIn){
       retTag = f.ret==='已归还'
@@ -1355,19 +1358,17 @@ function renderFlow(){
     }else{ retTag = '<span class="muted">—</span>'; }
     return '<tr>'
       + '<td data-label="时间">'+esc(f.time)+'</td>'
-      + '<td data-label="类型">'+(isIn?'<span class="tag tag-green">入库(归还)</span>':'<span class="tag tag-blue">出库(借领用)</span>')+'</td>'
-      + '<td data-label="设备">'+esc(devTxt)+'</td>'
-      + '<td data-label="数量"><b>'+(isIn?'+':'-')+(+f.qty||0)+'</b></td>'
+      + '<td data-label="类型">'+(isIn?'<span class="tag tag-green">入库</span>':'<span class="tag tag-blue">出库</span>')+'</td>'
+      + '<td data-label="设备"><div>'+esc(f.devName||d.name||devLabel(f.devId))+'<span class="cellsub">'+esc(f.devCode||d.code||'')+'</span></div></td>'
+      + '<td data-label="数量"><span style="font-weight:700;'+(isIn?'color:var(--ok)':'color:#007AFF')+'">'+(isIn?'+':'-')+qty+'</span></td>'
       + '<td data-label="机器编号">'+esc(d.machineNo||f.machineNo||'-')+'</td>'
-      + '<td data-label="机器序列号">'+esc(d.serial||f.serial||'-')+'</td>'
       + '<td data-label="'+(isIn?'经办人':'领用人')+'">'+esc(f.person||'-')+'</td>'
       + '<td data-label="'+(isIn?'来源':'领用部门')+'">'+esc(isIn?(f.source||'-'):(f.dept||'-'))+'</td>'
       + '<td data-label="归还状态">'+retTag+'</td>'
-      + '<td data-label="归还人">'+esc(f.returnPerson||'-')+'</td>'
-      + '<td data-label="归还日期">'+esc(f.returnDate||'-')+'</td>'
-      + '<td data-label="用途">'+esc(f.purpose||'-')+'</td>'
-      + '<td data-label="备注">'+esc(f.remark||'-')+'</td>'
-      + '<td data-label="操作"><button class="btn btn-line btn-sm" data-act="flowEdit" data-id="'+f.id+'">编辑</button></td>'
+      + '<td data-label="操作"><div class="acts">'
+      +   '<button class="btn btn-line btn-sm" data-act="flowView" data-id="'+f.id+'">查看</button>'
+      +   '<button class="btn btn-line btn-sm" data-act="flowEdit" data-id="'+f.id+'">编辑</button>'
+      + '</div></td>'
       + '</tr>';
   }).join('') : '';
 
@@ -1384,7 +1385,11 @@ function renderFlow(){
     +   '<div class="toolbar">'
     +     '<button class="btn btn-line btn-sm" data-act="flowNew" data-type="out">+ 出库领用</button>'
     +   '</div></div>'
-    +   '<div class="card-bd muted">出库（借领用）与「设备借用登记」为两条独立路径：<b>出库</b>用于库存数量变动（出库即离库，状态置「已出库」），<b>借用</b>用于人员借领（派生状态，不离库）。二者<b>不可混用</b>：已出库设备须先在下方流水行【登记归还】归还，方可登记借用；在借设备不可再出库。归还后设备恢复「在用」，并记入流水（归还人 / 归还日期可追溯）。顶部「入库记录」计数已包含真实入库 + 已归还出库，避免归还事件无账可查。每笔登记都对应设备台账中的真实设备，账实一一对应。历史流水只可新增与编辑，<b>不可删除</b>，保证可追溯。</div>'
+    +   '<div class="card-bd"><div class="flow-note">'
+    +     '<div><span class="n">①</span>两条路径独立：<b>出库</b>＝借领用（设备离库，状态置「已出库」）；<b>借用</b>＝人员借领（不离库），不可混用。</div>'
+    +     '<div><span class="n">②</span>归还闭环：已出库设备须先「登记归还」恢复「在用」方可登记借用；归还人 / 归还日期可追溯。</div>'
+    +     '<div><span class="n">③</span>账实对应：每笔登记对应台账真实设备；历史流水只可新增与编辑，不可删除。</div>'
+    +   '</div></div>'
     + '</div>'
     + '<div class="card"><div class="card-hd"><h2>历史流水记录（共 '+DB.flows.length+' 条）</h2>'
     +   '<div class="toolbar">'
@@ -1392,7 +1397,7 @@ function renderFlow(){
     +     '<button class="btn btn-ghost btn-sm" data-act="flowReportCsv">导出报表(CSV)</button>'
     +     '<button class="btn btn-ghost btn-sm" data-act="expFlows">导出流水表(CSV)</button>'
     +   '</div></div><div class="card-bd">'
-    + (rows ? '<div style="overflow-x:auto"><table><thead><tr><th>时间</th><th>类型</th><th>设备</th><th>数量</th><th>机器编号</th><th>机器序列号</th><th>经办/领用人</th><th>来源/领用部门</th><th>归还状态</th><th>归还人</th><th>归还日期</th><th>用途</th><th>备注</th><th>操作</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    + (rows ? '<div style="overflow-x:auto"><table><thead><tr><th>时间</th><th>类型</th><th>设备</th><th>数量</th><th>机器编号</th><th>经办/领用人</th><th>来源/领用部门</th><th>归还状态</th><th>操作</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
             : '<div class="empty">'+ICON.empty+'暂无出入库记录，点击上方按钮登记第一条</div>')
     + '</div></div>';
 }
@@ -1435,6 +1440,34 @@ function flowForm(type, rec){
     + '</div>'
     + fld('备注','<textarea id="f_remark2"></textarea>');
   }
+}
+function flowView(id){
+  var f = DB.flows.filter(function(x){return x.id===id;})[0];
+  if(!f) return;
+  var isIn = f.type==='in';
+  var d = devById(f.devId)||{};
+  var items = [
+    ['流水类型', isIn?'入库':'出库'],
+    ['发生时间', f.time||'-'],
+    ['设备', ((f.devCode||d.code||'')+(f.devName||d.name||'') ? (f.devCode||d.code||'')+' '+(f.devName||d.name||'') : devLabel(f.devId))],
+    ['数量', (isIn?'+':'-')+(+f.qty||0)],
+    ['机器编号', d.machineNo||f.machineNo||'-'],
+    ['机器序列号', d.serial||f.serial||'-'],
+    [isIn?'经办人':'领用人', f.person||'-'],
+    [isIn?'来源说明':'领用部门', isIn?(f.source||'-'):(f.dept||'-')],
+    ['用途', f.purpose||'-'],
+    ['归还状态', isIn?'—':(f.ret==='已归还'?'已归还':'未归还')],
+    ['归还人', f.returnPerson||'-'],
+    ['归还日期', f.returnDate||'-'],
+    ['备注', f.remark||'-']
+  ];
+  var html = items.map(function(it){
+    return '<div style="display:flex;padding:10px 0;border-bottom:1px solid var(--line);gap:12px;align-items:flex-start">'
+      + '<span style="width:88px;flex:0 0 88px;color:var(--muted);font-size:13px;padding-top:1px">'+esc(it[0])+'</span>'
+      + '<span style="flex:1;font-size:14px;word-break:break-all">'+esc(it[1])+'</span></div>';
+  }).join('');
+  openModal({ title:(isIn?'入库':'出库')+'流水明细', okText:'关闭',
+    body:'<div style="padding:2px 2px">'+html+'</div>' });
 }
 function flowEdit(id){
   var f = DB.flows.filter(function(x){return x.id===id;})[0];
@@ -2425,6 +2458,7 @@ document.addEventListener('click', function(e){
     openModal({title: tp==='in'?'入库登记':'出库领用登记', body:flowForm(tp), onOk:function(){ return flowSubmit(tp); }});
   }
   else if(act==='flowReturn'){ flowReturn(id); }
+  else if(act==='flowView'){ flowView(id); }
   else if(act==='flowEdit'){ flowEdit(id); }
   else if(act==='flowDelPwd'){ flowDelPwd(id); }
   else if(act==='expFlows'){ exportOne('flows'); }
